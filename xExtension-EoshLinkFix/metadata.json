@@ -1,0 +1,8 @@
+{
+  "name": "EOSH Link Fix",
+  "author": "You",
+  "description": "Rewrites eosh.gr/api/<slug> article links to eosh.gr/expeditions/<slug>",
+  "version": "1.0",
+  "entrypoint": "EoshLinkFix",
+  "type": "system"
+}

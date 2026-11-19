@@ -1,0 +1,8 @@
+{
+  "name": "Event Dates",
+  "author": "You",
+  "description": "Uses the excursion/event date (start and end) as the article date and adds Google Calendar and .ics buttons",
+  "version": "1.0",
+  "entrypoint": "EventDates",
+  "type": "system"
+}
