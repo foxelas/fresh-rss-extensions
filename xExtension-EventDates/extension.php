@@ -60,37 +60,43 @@ class EventDatesExtension extends Minz_Extension {
     // ------------------------------------------------------------------ hooks
 
     public function onInsert($entry) {
-        if (!self::applies($entry, false)) {
-            return $entry;
-        }
-        [$tags] = self::splitTags($entry);
-        foreach ($tags as $t) {
-            if (str_starts_with($t, self::TAG_EVENT)) {
+        try {
+            if (!self::applies($entry, false)) {
+                return $entry;
+            }
+            [, $existing] = self::splitTags($entry);
+            if ($existing !== null) {
                 return $entry; // already processed
             }
-        }
 
-        $info = self::analyse($entry);
-        if ($info['event'] === null) {
-            return $entry;
+            $info = self::analyse($entry);
+            if ($info['event'] === null) {
+                return $entry;
+            }
+            [$start, $end] = $info['event'];
+            $tags = $info['tags'];
+            $tags[] = self::TAG_EVENT . $start->format('Ymd') . '-' . $end->format('Ymd');
+            $tags[] = self::TAG_PUB . $info['published'];
+            $entry->_tags($tags);
+            $entry->_date($start->getTimestamp());
+        } catch (Throwable $ex) {
+            if (class_exists('Minz_Log')) {
+                Minz_Log::warning('Event Dates: ' . $ex->getMessage() . ' (line ' . $ex->getLine() . ')');
+            }
         }
-        [$start, $end] = $info['event'];
-        $tags = $info['tags'];
-        $tags[] = self::TAG_EVENT . $start->format('Ymd') . '-' . $end->format('Ymd');
-        $tags[] = self::TAG_PUB . $info['published'];
-        $entry->_tags($tags);
-        $entry->_date($start->getTimestamp());
         return $entry;
     }
 
     public function onDisplay($entry) {
+        if (str_contains($entry->content(), 'class="event-dates"')) {
+            return $entry;
+        }
         if (!self::applies($entry, true)) {
             return $entry;
         }
         [$tags, $event, $published] = self::splitTags($entry);
 
         if ($event === null) {
-            // Article from before the extension: work it out now
             $info = self::analyse($entry);
             $event = $info['event'];
             $published = $info['published'];
@@ -138,7 +144,7 @@ class EventDatesExtension extends Minz_Extension {
         }
 
         static $byId = null;
-        if ($byId === null) {
+        if ($byId === null || $byId === []) { // retry while the sidebar list isn't loaded yet
             $byId = [];
             $cats = [];
             if (method_exists('FreshRSS_Context', 'categories')) {
@@ -235,8 +241,6 @@ class EventDatesExtension extends Minz_Extension {
         $published = (int) $entry->date(true);
         $event = null;
 
-        // JSON feeds: ISO datetime in tags = real publish date (e.g. created_at).
-        // Its presence also means the article date is the event start date.
         $jsonEventFeed = false;
         foreach ($tags as $i => $t) {
             if (preg_match('/^\d{4}-\d{2}-\d{2}T/', $t)) {
@@ -250,12 +254,9 @@ class EventDatesExtension extends Minz_Extension {
         }
         $tags = array_values($tags);
 
-        // JSON feeds: ISO date in author = end date, article date = start date.
-        // One-day trips may have no end date: then the event is that one day.
         $author = trim((string) $entry->authors(true));
         $isoAuthor = preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $author, $m) === 1 && checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
-        // Guard: a date-only start_date arrives as midnight; a received time
-        // (feed not set up yet) does not, so it is not mistaken for the trip date.
+
         if (($isoAuthor || $jsonEventFeed) && date('H:i:s', $published) === '00:00:00') {
             $start = self::day((int) date('Y', $published), (int) date('n', $published), (int) date('j', $published));
             $end = $isoAuthor ? self::day((int) $m[1], (int) $m[2], (int) $m[3]) : $start;
